@@ -1,52 +1,83 @@
-import { kv } from "@/app/lib/kv";
-import { notFound } from "next/navigation";
+"use client";
 
-export default async function PastePage({ params: paramsArg }: { params: any }) {
-  // `params` may be a Promise in this Next runtime — unwrap it before use
-  const params = await (paramsArg as any);
-  const id = params.id;
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-  const paste: any = await kv.get(`paste:${id}`);
+export default function HomePage() {
+  const [content, setContent] = useState("");
+  const [ttl, setTtl] = useState(60); // default 1 minute
+  const [maxViews, setMaxViews] = useState(2); // default 2 views
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
-  if (!paste) {
-    notFound();
-  }
+  const handleCreatePaste = async () => {
+    if (!content.trim()) return alert("Paste cannot be empty!");
+    setLoading(true);
 
-  const now = Date.now();
+    try {
+      const res = await fetch("/api/paste", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content,
+          ttl_seconds: Number(ttl),
+          max_views: Number(maxViews),
+        }),
+      });
 
-  // TTL check
-    if (paste.ttl_seconds) {
-      const expiresAt = paste.created_at + paste.ttl_seconds * 1000;
-      if (now > expiresAt) {
-        await kv.del(`paste:${id}`);
-        notFound();
+      const data = await res.json();
+
+      if (data?.id) {
+        // Redirect to the paste page
+        router.push(`/p/${data.id}`);
+      } else {
+        alert("Failed to create paste");
       }
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong!");
+    } finally {
+      setLoading(false);
     }
-
-  // View limit check
-  if (paste.max_views !== null && paste.views >= paste.max_views) {
-    await kv.del(`paste:${id}`);
-    notFound();
-  }
-
-  // Increment views
-  paste.views = (paste.views ?? 0) + 1;
-  await kv.set(`paste:${id}`, paste);
+  };
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "monospace" }}>
-      <h1>Paste</h1>
-      <pre
+    <main style={{ padding: "2rem", fontFamily: "monospace", maxWidth: 600, margin: "auto" }}>
+      <h1>📋 Pastebin Lite</h1>
+      <textarea
+        placeholder="Paste your text here..."
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        style={{ width: "100%", height: 200, padding: "1rem", borderRadius: "6px", fontFamily: "monospace" }}
+      />
+
+      <div style={{ marginTop: "1rem" }}>
+        <label>
+          TTL (seconds):{" "}
+          <input type="number" value={ttl} onChange={(e) => setTtl(Number(e.target.value))} min={1} />
+        </label>
+      </div>
+
+      <div style={{ marginTop: "1rem" }}>
+        <label>
+          Max Views:{" "}
+          <input type="number" value={maxViews} onChange={(e) => setMaxViews(Number(e.target.value))} min={1} />
+        </label>
+      </div>
+
+      <button
+        onClick={handleCreatePaste}
+        disabled={loading}
         style={{
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          background: "#f5f5f5",
-          padding: "1rem",
+          marginTop: "1rem",
+          padding: "0.5rem 1rem",
           borderRadius: "6px",
+          cursor: "pointer",
+          fontWeight: "bold",
         }}
       >
-        {paste.content}
-      </pre>
+        {loading ? "Creating..." : "Create Paste"}
+      </button>
     </main>
   );
 }
