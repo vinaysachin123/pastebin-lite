@@ -1,5 +1,5 @@
 
-import { kv } from "@/app/lib/kv";
+import { kv } from "@/app/lib/kv.server";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -10,41 +10,22 @@ export async function GET(req: Request, ctx: any) {
   try {
     const { id } = params;
 
-    // Fetch paste from KV (or fallback file)
-    const raw = await kv.get(`paste:${id}`);
-    let content = raw;
-
-    if (!content) {
-      try {
-        const fs = require("fs");
-        const path = require("path");
-        const p = path.join(process.cwd(), ".pastebin_store.json");
-        if (fs.existsSync(p)) {
-          const store = JSON.parse(fs.readFileSync(p, "utf8") || "{}");
-          if (store && store[`paste:${id}`]) content = store[`paste:${id}`];
-        }
-      } catch (e) {
-        /* ignore */
-      }
+    // Fetch paste from KV
+    const paste: any = await kv.get(`paste:${id}`);
+    if (!paste) {
+      return NextResponse.json({ error: "Paste not found" }, { status: 404 });
     }
-
-    if (!content) {
-      return NextResponse.json({ error: "Paste not found", kv_raw: raw }, { status: 404 });
-    }
-
-    // enforce TTL and max-views similar to singular route
-    const paste: any = content;
     const now = Date.now();
     if (typeof paste.ttl_seconds === "number") {
       const expiresAt = paste.created_at + paste.ttl_seconds * 1000;
       if (now > expiresAt) {
-        await kv.del(`paste:${id}`);
+        if (typeof kv.del === "function") await kv.del(`paste:${id}`);
         return NextResponse.json({ error: "Paste expired" }, { status: 404 });
       }
     }
 
     if (typeof paste.max_views === "number" && paste.views >= paste.max_views) {
-      await kv.del(`paste:${id}`);
+      if (typeof kv.del === "function") await kv.del(`paste:${id}`);
       return NextResponse.json({ error: "Paste view limit exceeded" }, { status: 404 });
     }
 
