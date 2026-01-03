@@ -1,10 +1,9 @@
 import { kv } from "@/app/lib/kv";
 import { NextResponse } from "next/server";
 
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: Request, ctx: any) {
+  // `params` may be a Promise in the Next runtime; unwrap it before use
+  const params = await (ctx?.params as any);
   try {
     const { id } = params;
 
